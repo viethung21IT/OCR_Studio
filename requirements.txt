@@ -2,7 +2,6 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
-gradio>=4.0.0
 
 # Deep Learning & OCR Engine
 torch>=2.2.0
