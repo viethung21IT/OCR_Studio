@@ -1,0 +1,21 @@
+# Web Framework & Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# Deep Learning & OCR Engine
+torch>=2.2.0
+torchvision>=0.17.0
+onnxruntime-gpu>=1.18.0
+vietocr>=0.3.8
+
+# Computer Vision & Geometry
+opencv-python>=4.8.0
+pillow>=10.0.0
+numpy>=1.24.0
+pyclipper>=1.3.0
+shapely>=2.0.0
+
+# Model Downloading & Utilities
+huggingface-hub>=0.20.0
+requests>=2.31.0

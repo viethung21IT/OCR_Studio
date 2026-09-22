@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIC OCR Studio — Trích xuất chữ tiếng Việt & Bounding Box</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="glow-bg top-left"></div>
+  <div class="glow-bg bottom-right"></div>
+
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="navbar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <path d="M7 7h3v10H7z"/>
+            <path d="M14 7h3"/>
+            <path d="M14 12h2"/>
+            <path d="M14 17h3"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>AIC OCR <span>Studio</span></h1>
+          <p class="subtitle">Vietnamese Text Detection & Recognition Demo</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="status-badge" id="system-status">
+          <span class="status-dot pulse"></span>
+          <span id="status-text">Đang kết nối...</span>
+        </div>
+        <button class="icon-btn" id="settings-toggle" title="Cài đặt mô hình">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span>Tùy chỉnh</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Settings Drawer -->
+    <div class="settings-drawer" id="settings-drawer">
+      <div class="drawer-header">
+        <h3>Cấu hình tham số OCR</h3>
+        <button class="close-btn" id="close-settings">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <div class="setting-group">
+          <label for="vietocr-model">Mô hình VietOCR</label>
+          <select id="vietocr-model">
+            <option value="vgg_transformer" selected>vgg_transformer (Chính xác nhất)</option>
+            <option value="vgg_seq2seq">vgg_seq2seq (Nhanh hơn)</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <div class="label-row">
+            <label for="det-thresh">Detection Threshold (Phát hiện)</label>
+            <span id="det-thresh-val">0.25</span>
+          </div>
+          <input type="range" id="det-thresh" min="0.1" max="0.8" step="0.05" value="0.25">
+        </div>
+        <div class="setting-group">
+          <div class="label-row">
+            <label for="min-confidence">Min Recognition Confidence (Lọc text)</label>
+            <span id="min-confidence-val">0.20</span>
+          </div>
+          <input type="range" id="min-confidence" min="0.0" max="0.9" step="0.05" value="0.20">
+        </div>
+        <div class="setting-group checkbox-group">
+          <label>
+            <input type="checkbox" id="adaptive-padding" checked>
+            <span>Lề đệm bảo vệ dấu thanh tiếng Việt (Adaptive Padding)</span>
+          </label>
+        </div>
+        <div class="setting-group checkbox-group">
+          <label>
+            <input type="checkbox" id="normalize-text" checked>
+            <span>Chuẩn hóa tiếng Việt & Dấu câu (Unicode NFC)</span>
+          </label>
+        </div>
+        <div class="setting-group checkbox-group">
+          <label>
+            <input type="checkbox" id="upscale-small" checked>
+            <span>Tự động Upscale các vùng chữ nhỏ (&lt; 42px)</span>
+          </label>
+        </div>
+        <div class="setting-group checkbox-group">
+          <label>
+            <input type="checkbox" id="contrast-boost">
+            <span>Tăng cường tương phản chữ mờ/chìm nền (CLAHE)</span>
+          </label>
+        </div>
+        <div class="setting-group checkbox-group">
+          <label>
+            <input type="checkbox" id="use-beamsearch">
+            <span>Giải mã chính xác cao (Beam Search)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <main class="main-content">
+      <!-- Upload & Previews Bar -->
+      <section class="upload-section">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="file-input" accept="image/*" style="display: none;">
+          <div class="dropzone-content">
+            <div class="upload-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <div class="upload-title">Kéo & thả ảnh vào đây, hoặc <span class="browse-link">Chọn ảnh từ máy</span></div>
+            <div class="upload-hint">Hỗ trợ JPG, PNG, WEBP. Hoặc dán trực tiếp bằng phím tắt <code>Ctrl + V</code></div>
+          </div>
+        </div>
+
+        <!-- Sample Presets -->
+        <div class="samples-bar">
+          <span class="samples-label">Ảnh mẫu cơ bản:</span>
+          <div class="samples-list" id="samples-list">
+            <button class="sample-chip" data-sample="subtitles">🎬 Video Subtitles</button>
+            <button class="sample-chip" data-sample="billboard">🏢 Biển hiệu phố</button>
+            <button class="sample-chip" data-sample="news">📰 Bảng tin thời sự</button>
+          </div>
+        </div>
+        <div class="samples-bar" style="margin-top: 6px;">
+          <span class="samples-label" style="color: #f59e0b; font-weight: 600;">🔥 Test case khó:</span>
+          <div class="samples-list">
+            <button class="sample-chip" data-sample="invoice" style="border-color: rgba(245, 158, 11, 0.4);">🧾 Hóa đơn VAT dày</button>
+            <button class="sample-chip" data-sample="angled_sign" style="border-color: rgba(245, 158, 11, 0.4);">📐 Biển nghiêng 3D</button>
+            <button class="sample-chip" data-sample="neon_glow" style="border-color: rgba(245, 158, 11, 0.4);">💡 Chữ Neon Đêm</button>
+            <button class="sample-chip" data-sample="dense_menu" style="border-color: rgba(245, 158, 11, 0.4);">📋 Menu 2 Cột</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Processing Banner -->
+      <div class="processing-banner" id="processing-banner" style="display: none;">
+        <div class="loader-spinner"></div>
+        <div class="processing-text">
+          <h4>Đang chạy nhận dạng OCR...</h4>
+          <p>PP-OCRv6 phát hiện vùng chữ &bull; VietOCR nhận diện văn bản tiếng Việt</p>
+        </div>
+      </div>
+
+      <!-- Dashboard Results Container -->
+      <section class="results-dashboard" id="results-dashboard" style="display: none;">
+        <!-- Left: Image Viewer with BBoxes -->
+        <div class="card viewer-card">
+          <div class="card-header">
+            <div class="tabs-container">
+              <button class="tab-btn active" data-view="annotated">Ảnh Bounding Box</button>
+              <button class="tab-btn" data-view="original">Ảnh gốc</button>
+            </div>
+            <div class="viewer-actions">
+              <button class="action-btn" id="btn-zoom-in" title="Phóng to">+</button>
+              <button class="action-btn" id="btn-zoom-reset" title="Khôi phục kích thước">1:1</button>
+              <button class="action-btn" id="btn-zoom-out" title="Thu nhỏ">-</button>
+              <a class="action-btn" id="btn-download-img" download="ocr_annotated.jpg" title="Tải ảnh kết quả">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+          
+          <div class="viewer-body" id="viewer-container">
+            <div class="image-wrapper" id="image-wrapper">
+              <img id="annotated-img" alt="OCR Annotated" src="" class="ocr-image" />
+              <img id="original-img" alt="Original" src="" class="ocr-image" style="display: none;" />
+              <canvas id="bbox-overlay-canvas"></canvas>
+            </div>
+          </div>
+          <div class="viewer-footer">
+            <span id="img-resolution">Kích thước: -- x --</span>
+            <span id="box-count-badge">0 vùng chữ</span>
+          </div>
+        </div>
+
+        <!-- Right: Extracted Text & Details -->
+        <div class="card results-card">
+          <div class="card-header">
+            <div class="metrics-row">
+              <div class="metric-item">
+                <span class="metric-val" id="stat-count">0</span>
+                <span class="metric-label">Vùng chữ</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-val" id="stat-time">0 ms</span>
+                <span class="metric-label">Thời gian chạy</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-val" id="stat-conf">0%</span>
+                <span class="metric-label">Độ tin cậy TB</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-body scrollable-body">
+            <!-- Full Text Box -->
+            <div class="section-block">
+              <div class="block-header">
+                <h3>Văn bản trích xuất hoàn chỉnh</h3>
+                <div class="block-actions">
+                  <button class="secondary-btn" id="btn-copy-all" title="Sao chép toàn bộ text">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    <span>Sao chép</span>
+                  </button>
+                  <button class="secondary-btn" id="btn-export-txt" title="Xuất file văn bản TXT">
+                    <span>.TXT</span>
+                  </button>
+                  <button class="secondary-btn" id="btn-export-json" title="Xuất kết quả JSON">
+                    <span>.JSON</span>
+                  </button>
+                </div>
+              </div>
+              <div class="full-text-display" id="full-text-display"></div>
+            </div>
+
+            <!-- Detailed Bounding Box List -->
+            <div class="section-block">
+              <div class="block-header">
+                <h3>Danh sách từng Bounding Box</h3>
+                <span class="sub-hint">Rê chuột vào để xem vị trí trên ảnh</span>
+              </div>
+              <div class="boxes-list" id="boxes-list">
+                <!-- BBox items dynamically rendered -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
