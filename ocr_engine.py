@@ -680,10 +680,16 @@ class OCREngine:
     @staticmethod
     def _get_font(size: int = 13) -> Any:
         font_candidates = [
+            # Windows
             r"C:\Windows\Fonts\segoeui.ttf",
             r"C:\Windows\Fonts\arial.ttf",
             r"C:\Windows\Fonts\tahoma.ttf",
             r"C:\Windows\Fonts\calibri.ttf",
+            # Linux / Docker (Debian, Ubuntu, Hugging Face Spaces)
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
         ]
         for path in font_candidates:
             if os.path.exists(path):
