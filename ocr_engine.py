@@ -252,7 +252,8 @@ class ONNXDBNetDetector:
         self._warmup()
 
     def _ensure_model_exists(self):
-        if not self.model_path.exists():
+        # Kiểm tra file có tồn tại và kích thước phải > 1MB (để tránh trường hợp file pointer Git LFS chưa được pull)
+        if not self.model_path.exists() or self.model_path.stat().st_size < 1_000_000:
             logger.info(f"Downloading PP-OCRv4 detection ONNX model to {self.model_path}...")
             self.model_path.parent.mkdir(parents=True, exist_ok=True)
             from huggingface_hub import hf_hub_download
@@ -571,8 +572,13 @@ class OCREngine:
         min_conf = min_confidence if min_confidence is not None else self.min_rec_confidence
 
         # Decode image
+        if isinstance(image_input, dict) and "path" in image_input:
+            image_input = image_input["path"]
+
         if isinstance(image_input, (str, Path)):
-            image_bgr = cv2.imread(str(image_input))
+            with open(str(image_input), "rb") as f:
+                nparr = np.frombuffer(f.read(), np.uint8)
+            image_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         elif isinstance(image_input, bytes):
             nparr = np.frombuffer(image_input, np.uint8)
             image_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -582,7 +588,7 @@ class OCREngine:
         elif isinstance(image_input, np.ndarray):
             image_bgr = image_input.copy()
         else:
-            raise ValueError("Unsupported image input type")
+            raise ValueError(f"Unsupported image input type: {type(image_input)}")
 
         if image_bgr is None:
             raise ValueError("Failed to decode or read image.")
