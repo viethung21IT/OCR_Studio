@@ -1,3 +1,14 @@
+---
+title: AIC OCR Studio
+emoji: 🚀
+colorFrom: indigo
+colorTo: blue
+sdk: gradio
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # 🚀 AIC OCR Studio — Trích Xuất Chữ Tiếng Việt & Bounding Box Siêu Tốc (GPU CUDA)
 
 <p align="center">
