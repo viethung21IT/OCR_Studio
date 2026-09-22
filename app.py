@@ -1,5 +1,20 @@
 import os
 from pathlib import Path
+
+# ZeroGPU support for Hugging Face Spaces
+try:
+    import spaces
+except ImportError:
+    class MockSpaces:
+        @staticmethod
+        def GPU(func=None, duration=None):
+            if func is None:
+                def decorator(f):
+                    return f
+                return decorator
+            return func
+    spaces = MockSpaces()
+
 from fastapi import File, UploadFile, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,6 +35,8 @@ def get_or_init_engine() -> OCREngine:
         engine = OCREngine(vietocr_model_name="vgg_transformer", gpu_id=0)
     return engine
 
+
+@spaces.GPU
 def gradio_predict(img, det_thresh, min_conf, upscale, adapt_pad, contrast, norm, beam):
     if img is None:
         return None, "Vui lòng chọn hoặc tải lên một hình ảnh.", {}
