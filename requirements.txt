@@ -8,6 +8,7 @@ torch>=2.2.0
 torchvision>=0.17.0
 onnxruntime>=1.18.0
 vietocr>=0.3.8
+setuptools
 
 # Computer Vision & Geometry
 opencv-python-headless>=4.8.0
