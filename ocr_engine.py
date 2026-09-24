@@ -126,9 +126,17 @@ def _patch_pkg_resources() -> None:
         )
         return os.path.join(_find_module_dir(pkg), resource_name)
 
+    class MockDistribution:
+        def __init__(self, version="unknown"):
+            self.version = version
+
+    def get_distribution(pkg_name):
+        return MockDistribution("1.0.0")
+
     shim = types.ModuleType('pkg_resources')
     shim.resource_string = resource_string
     shim.resource_filename = resource_filename
+    shim.get_distribution = get_distribution
     shim.require = lambda *args: []
     sys.modules['pkg_resources'] = shim
     logger.warning(
