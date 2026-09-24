@@ -9,7 +9,7 @@ python-multipart>=0.0.9
 # Deep Learning & OCR Engine
 torch>=2.2.0
 torchvision>=0.17.0
-onnxruntime>=1.18.0
+onnxruntime-gpu>=1.18.0
 vietocr>=0.3.8
 setuptools
 

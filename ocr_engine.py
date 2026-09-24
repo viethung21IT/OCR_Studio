@@ -318,9 +318,14 @@ class ONNXDBNetDetector:
         orig_h: int,
         orig_w: int,
         thresh: float = 0.25,
-        box_thresh: float = 0.45,
+        box_thresh: Optional[float] = None,
         unclip_ratio: float = 1.5,
     ) -> Tuple[List[np.ndarray], List[float]]:
+        # box_thresh filters individual bounding boxes by their mean prediction score.
+        # Default: thresh * 0.6 so it's always below the pixel-level mask threshold
+        # and works correctly on both CPU and CUDA ONNX runtimes.
+        if box_thresh is None:
+            box_thresh = thresh * 0.6
         pred = pred_map[0, 0, :, :]
         mask = (pred > thresh).astype(np.uint8)
 
@@ -358,6 +363,7 @@ class ONNXDBNetDetector:
         orig_h, orig_w = image_bgr.shape[:2]
         tensor, ratio_h, ratio_w = self.preprocess(image_bgr)
         preds = self.session.run(None, {self.input_name: tensor})[0]
+        # Pass thresh so box_thresh is auto-derived as thresh*0.6 (consistent across CPU/CUDA)
         boxes, scores = self.postprocess(preds, ratio_h, ratio_w, orig_h, orig_w, thresh=thresh)
         return boxes, scores
 
