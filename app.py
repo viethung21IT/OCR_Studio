@@ -140,10 +140,13 @@ if STATIC_DIR.exists():
 
 @app.on_event("startup")
 def startup_event():
-    try:
-        get_or_init_engine()
-    except Exception as e:
-        logger.warning(f"Engine deferred startup initialization: {e}")
+    # Only pre-warm engine locally (avoid triggering CUDA outside @spaces.GPU on Hugging Face Spaces)
+    is_hf_space = bool(os.environ.get("SPACE_ID") or os.environ.get("SYSTEM") == "spaces")
+    if not is_hf_space:
+        try:
+            get_or_init_engine()
+        except Exception as e:
+            logger.warning(f"Engine deferred startup initialization: {e}")
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -249,11 +252,13 @@ app = gr.mount_gradio_app(app, demo, path="/gradio")
 
 # ── Entrypoint ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    host = os.environ.get("HOST", "127.0.0.1")
-    # If explicitly running on Hugging Face Spaces (PORT=7860), bind to 0.0.0.0
-    if os.environ.get("SPACE_ID"):
-        host = "0.0.0.0"
-        port = int(os.environ.get("PORT", 7860))
-    uvicorn.run(app, host=host, port=port)
+    is_hf_space = bool(os.environ.get("SPACE_ID") or os.environ.get("SYSTEM") == "spaces")
+    if is_hf_space:
+        # On Hugging Face Spaces: launch Gradio directly to let HF manage ports, SSR proxy, and ZeroGPU
+        demo.launch(show_error=True)
+    else:
+        # Locally: run Uvicorn to serve Dark Mode Web Studio, APIs, and Gradio at /gradio
+        import uvicorn
+        port = int(os.environ.get("PORT", 8000))
+        host = os.environ.get("HOST", "127.0.0.1")
+        uvicorn.run(app, host=host, port=port)
