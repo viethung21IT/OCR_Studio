@@ -1,18 +1,7 @@
----
-title: AIC OCR Studio
-emoji: 🚀
-colorFrom: indigo
-colorTo: blue
-sdk: gradio
-app_file: app.py
-pinned: false
-license: mit
----
-
-# 🚀 AIC OCR Studio — Trích Xuất Chữ Tiếng Việt & Bounding Box Siêu Tốc (GPU CUDA)
+# OCR Studio — Trích Xuất Chữ Tiếng Việt & Bounding Box (GPU CUDA)
 
 <p align="center">
-  <img src="docs/images/demo_overview.png" alt="AIC OCR Studio Overview" width="850">
+  <img src="docs/images/demo_overview.png" alt="OCR Studio Overview" width="850">
 </p>
 
 <p align="center">
@@ -20,14 +9,14 @@ license: mit
   <a href="#hiệu-năng--benchmark"><img src="https://img.shields.io/badge/Speed-~190ms%2Fimage-brightgreen.svg?style=for-the-badge" alt="Speed"></a>
   <a href="https://pytorch.org/"><img src="https://img.shields.io/badge/PyTorch-2.6%2Bcu124-EE4C2C.svg?style=for-the-badge&logo=pytorch" alt="PyTorch"></a>
   <a href="https://onnxruntime.ai/"><img src="https://img.shields.io/badge/ONNX_Runtime-CUDA-005CED.svg?style=for-the-badge&logo=onnx" alt="ONNX Runtime"></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.128-009688.svg?style=for-the-badge&logo=fastapi" alt="FastAPI"></a>
+  <a href="https://gradio.app/"><img src="https://img.shields.io/badge/Gradio-SDK-FF4B4B.svg?style=for-the-badge&logo=gradio" alt="Gradio"></a>
 </p>
 
 ---
 
 ## 📖 Giới thiệu Dự án
 
-**AIC OCR Studio** là hệ thống nhận diện quang học ký tự (Optical Character Recognition - OCR) chuyên biệt cho **Tiếng Việt**, được tối ưu hóa toàn diện trên phần cứng **GPU NVIDIA (CUDA)**. 
+**OCR Studio** là hệ thống nhận diện quang học ký tự (Optical Character Recognition - OCR) chuyên biệt cho **Tiếng Việt**, được tối ưu hóa toàn diện trên phần cứng **GPU NVIDIA (CUDA)**.
 
 Dự án tích hợp mô hình phát hiện vùng chữ đa giác **DBNet (ONNX Runtime CUDA)** kết hợp cùng mô hình nhận dạng chuỗi ký tự tiếng Việt **VietOCR Transformer**, mang lại tốc độ xử lý siêu tốc **~190 - 340 ms/ảnh** (tăng tốc gấp **~25 lần** so với giải pháp chạy CPU truyền thống) trong khi vẫn bảo toàn tuyệt đối độ chính xác của các dấu thanh âm học phức tạp.
 
@@ -44,7 +33,7 @@ Dự án tích hợp mô hình phát hiện vùng chữ đa giác **DBNet (ONNX 
   - Chuẩn hóa dạng dựng sẵn **NFC** (`unicodedata.normalize`).
   - Sửa lỗi dính liền từ hoa phổ biến: `CÀPHÊ` $\to$ `CÀ PHÊ`, `VIỆTNAM` $\to$ `VIỆT NAM`.
   - Bộ từ điển bảo toàn chữ hoa/thường sửa các cặp âm dễ nhầm: `cà phé` $\to$ `cà phê`, `phố cô / phổ cổ` $\to$ `phố cổ`.
-- 🎨 **Giao diện Web Demo Hiện đại & Trực quan (AIC Studio)**:
+- 🎨 **Giao diện Web Demo Hiện đại & Trực quan (Gradio)**:
   - Hỗ trợ tải ảnh bằng nhiều hình thức: **Kéo & thả**, **Chọn từ máy**, hoặc **Dán trực tiếp từ Clipboard (`Ctrl + V`)**.
   - Bounding Box dạ quang đa giác với hiệu ứng **Hover Highlight hai chiều** (rê chuột vào danh sách bên phải sẽ làm sáng box tương ứng trên ảnh).
   - Thanh cấu hình tham số thời gian thực: *Detection Threshold, Min Confidence, CLAHE Contrast Boost, Upscale chữ nhỏ, Beam Search*.
@@ -131,12 +120,12 @@ pip install -r requirements.txt
   .\run_demo.ps1
   ```
 
-#### Cách 2: Khởi chạy bằng lệnh Uvicorn
+#### Cách 2: Khởi chạy bằng lệnh Python
 ```bash
-python -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload
+python app.py
 ```
 
-Mở trình duyệt web và truy cập vào địa chỉ: **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
+Mở trình duyệt web và truy cập vào địa chỉ Gradio cung cấp (thường là **[http://127.0.0.1:7860](http://127.0.0.1:7860)**)
 
 ---
 
@@ -144,7 +133,7 @@ Mở trình duyệt web và truy cập vào địa chỉ: **[http://127.0.0.1:80
 
 ```text
 ocr-project/
-├── app.py                      # FastAPI Backend Server & Endpoints
+├── app.py                      # Gradio Web Interface & Entrypoint
 ├── ocr_engine.py               # Lõi OCR: ONNX DBNet + VietOCR Batching + NLP
 ├── requirements.txt            # Danh sách thư viện phụ thuộc
 ├── run_demo.bat                # Script khởi động 1-click cho Windows (Batch)
@@ -155,10 +144,6 @@ ocr-project/
 │       └── ch_PP-OCRv4_det/
 │           └── model.onnx      # Trọng số ONNX DBNet phát hiện vùng chữ (4.7MB)
 ├── sample_images/              # Bộ ảnh mẫu kiểm thử (Biển hiệu, Hóa đơn, Menu, Subtitle)
-├── static/                     # Giao diện Web AIC OCR Studio (Vanilla HTML/CSS/JS)
-│   ├── index.html              # Trang chủ ứng dụng
-│   ├── style.css               # Giao diện Dark-mode cao cấp
-│   └── app.js                  # Xử lý sự kiện kéo thả, gọi API, tương tác Canvas
 └── docs/
     └── images/                 # Ảnh minh họa và tài liệu hướng dẫn
 ```
