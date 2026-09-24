@@ -1,15 +1,12 @@
-import os
-import io
-import base64
-import logging
-from pathlib import Path
-from PIL import Image
-
-# ZeroGPU support for Hugging Face Spaces (optional)
+# ── ZeroGPU: spaces MUST be the very first import ─────────────────────
+# The spaces library monkey-patches torch.cuda so it must run before
+# anything else touches CUDA. No try/except wrapper allowed here on HF.
 try:
-    import spaces
+    import spaces  # real ZeroGPU on Hugging Face Spaces
+    _HAS_SPACES = True
 except ImportError:
-    class MockSpaces:
+    # Running locally: provide a no-op stub that preserves decorator API
+    class _SpacesStub:
         @staticmethod
         def GPU(func=None, duration=None):
             if func is None:
@@ -17,15 +14,22 @@ except ImportError:
                     return f
                 return decorator
             return func
-    spaces = MockSpaces()
+    spaces = _SpacesStub()  # type: ignore
+    _HAS_SPACES = False
 
+import os
+import io
+import base64
+import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
+
+from PIL import Image
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
-from ocr_engine import OCREngine
 
 logger = logging.getLogger("App")
 logging.basicConfig(level=logging.INFO)
@@ -34,22 +38,29 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 SAMPLES_DIR = BASE_DIR / "sample_images"
 
-# ── Global OCR Engine ──────────────────────────────────────────────────
-engine: OCREngine = None
+# ── Global OCR Engine (lazy) ───────────────────────────────────────────
+# OCREngine is imported lazily so that torch/CUDA are only loaded after
+# spaces has patched the CUDA runtime on Hugging Face Spaces.
+_engine = None
 
-def get_or_init_engine() -> OCREngine:
-    global engine
-    if engine is None:
-        engine = OCREngine(vietocr_model_name="vgg_transformer", gpu_id=0)
-    return engine
+def get_or_init_engine():
+    global _engine
+    if _engine is None:
+        from ocr_engine import OCREngine  # lazy import – AFTER spaces patch
+        _engine = OCREngine(vietocr_model_name="vgg_transformer", gpu_id=0)
+    return _engine
 
 
-# ── Gradio predict function ───────────────────────────────────────────
+# ── Gradio predict – decorated with @spaces.GPU ───────────────────────
+# ZeroGPU scans for this decorator at startup. It MUST exist at module
+# level and reference the real spaces.GPU (or our no-op stub locally).
 @spaces.GPU
 def gradio_predict(img, det_thresh, min_conf, upscale, adapt_pad, contrast, norm, beam):
+    """Run OCR on the supplied image and return annotated result."""
     try:
         if img is None:
             return None, "Vui lòng chọn hoặc tải lên một hình ảnh.", {}
+
         eng = get_or_init_engine()
         res = eng.predict(
             image_input=img,
@@ -63,7 +74,7 @@ def gradio_predict(img, det_thresh, min_conf, upscale, adapt_pad, contrast, norm
         )
 
         ann_img = None
-        if "annotated_image_base64" in res and res["annotated_image_base64"]:
+        if res.get("annotated_image_base64"):
             b64 = res["annotated_image_base64"]
             if b64.startswith("data:"):
                 b64 = b64.split(",", 1)[1]
@@ -71,19 +82,29 @@ def gradio_predict(img, det_thresh, min_conf, upscale, adapt_pad, contrast, norm
             pil_img = Image.open(io.BytesIO(img_data))
             ann_img = pil_img.copy()
 
-        lines = [f"[{item.get('rec_confidence', 0.0)*100:.1f}%] {item.get('text', '')}" for item in res.get("boxes", [])]
-        text_summary = "\n".join(lines) if lines else res.get("full_text", "Không phát hiện thấy chữ trong ảnh.")
+        lines = [
+            f"[{item.get('rec_confidence', 0.0) * 100:.1f}%] {item.get('text', '')}"
+            for item in res.get("boxes", [])
+        ]
+        text_summary = (
+            "\n".join(lines) if lines
+            else res.get("full_text", "Không phát hiện thấy chữ trong ảnh.")
+        )
         return ann_img, text_summary, res
+
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise e
 
 
-# ── Gradio UI Definition ──────────────────────────────────────────────
+# ── Gradio UI ─────────────────────────────────────────────────────────
 with gr.Blocks(title="AIC OCR Studio — Vietnamese OCR") as demo:
     gr.Markdown("# 🚀 AIC OCR Studio — Trích Xuất Chữ Tiếng Việt & Bounding Box")
-    gr.Markdown("Nhận diện ký tự tiếng Việt siêu tốc bảo toàn 100% dấu thanh âm học phức tạp bằng mô hình DBNet & VietOCR Transformer.")
+    gr.Markdown(
+        "Nhận diện ký tự tiếng Việt siêu tốc bảo toàn 100% dấu thanh âm học phức tạp "
+        "bằng mô hình DBNet & VietOCR Transformer."
+    )
 
     with gr.Row():
         with gr.Column(scale=1):
@@ -91,14 +112,13 @@ with gr.Blocks(title="AIC OCR Studio — Vietnamese OCR") as demo:
             with gr.Accordion("⚙️ Cấu hình Nhận diện nâng cao", open=False):
                 det_th = gr.Slider(0.05, 0.90, value=0.25, step=0.05, label="Detection Threshold")
                 min_cf = gr.Slider(0.05, 0.90, value=0.20, step=0.05, label="Min Confidence")
-                up_sm = gr.Checkbox(value=True, label="Upscale chữ nhỏ")
-                ad_pd = gr.Checkbox(value=True, label="Adaptive Polygon Expansion (Giữ trọn dấu tiếng Việt)")
+                up_sm = gr.Checkbox(value=True,  label="Upscale chữ nhỏ")
+                ad_pd = gr.Checkbox(value=True,  label="Adaptive Polygon Expansion (Giữ trọn dấu tiếng Việt)")
                 ct_bs = gr.Checkbox(value=False, label="CLAHE Contrast Boost")
-                nm_tx = gr.Checkbox(value=True, label="NLP Vietnamese Normalizer")
+                nm_tx = gr.Checkbox(value=True,  label="NLP Vietnamese Normalizer")
                 bm_sc = gr.Checkbox(value=False, label="Beam Search")
             gr_btn = gr.Button("🔍 Bắt đầu Nhận diện OCR", variant="primary", size="lg")
 
-            # Example chips
             sample_candidates = [
                 str(SAMPLES_DIR / "sample_billboard.jpg"),
                 str(SAMPLES_DIR / "sample_news.jpg"),
@@ -106,33 +126,36 @@ with gr.Blocks(title="AIC OCR Studio — Vietnamese OCR") as demo:
             ]
             existing_samples = [s for s in sample_candidates if Path(s).exists()]
             if existing_samples:
-                gr.Examples(examples=existing_samples, inputs=gr_input, label="💡 Ảnh Mẫu Thử Nghiệm Nhanh")
+                gr.Examples(examples=existing_samples, inputs=gr_input,
+                            label="💡 Ảnh Mẫu Thử Nghiệm Nhanh")
 
         with gr.Column(scale=1):
-            gr_ann = gr.Image(type="pil", label="Ảnh phát hiện Bounding Box Dạ quang")
+            gr_ann  = gr.Image(type="pil", label="Ảnh phát hiện Bounding Box Dạ quang")
             gr_text = gr.Textbox(label="Văn bản trích xuất được (kèm Độ tự tin)", lines=7)
             gr_json = gr.JSON(label="Chi tiết toạ độ Polygon Bounding Box")
 
     gr_btn.click(
         fn=gradio_predict,
         inputs=[gr_input, det_th, min_cf, up_sm, ad_pd, ct_bs, nm_tx, bm_sc],
-        outputs=[gr_ann, gr_text, gr_json]
+        outputs=[gr_ann, gr_text, gr_json],
     )
 
 
+# ── FastAPI lifespan ───────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Only pre-warm engine locally (avoid triggering CUDA outside @spaces.GPU on Hugging Face Spaces)
     is_hf_space = bool(os.environ.get("SPACE_ID") or os.environ.get("SYSTEM") == "spaces")
     if not is_hf_space:
+        # Pre-warm the engine locally (not on HF Spaces – use lazy init inside @spaces.GPU)
         try:
             get_or_init_engine()
+            logger.info("OCR engine pre-warmed successfully.")
         except Exception as e:
             logger.warning(f"Engine deferred startup initialization: {e}")
     yield
 
 
-# ── FastAPI Application ───────────────────────────────────────────────
+# ── FastAPI app ────────────────────────────────────────────────────────
 app = FastAPI(
     title="AIC OCR Studio",
     description="Vietnamese OCR with DBNet (ONNX) and VietOCR Transformer",
@@ -148,9 +171,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for Dark Mode Web Studio
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -159,6 +182,7 @@ async def serve_index():
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html not found in static folder.")
     return FileResponse(str(index_path))
+
 
 @app.get("/api/health")
 async def health_check():
@@ -170,25 +194,23 @@ async def health_check():
             "model": eng.vietocr_model_name,
             "detector_loaded": eng.detector is not None,
             "providers": eng.detector.active_providers if eng.detector else [],
-            "vietocr_loaded": eng.vietocr_predictor is not None
+            "vietocr_loaded": eng.vietocr_predictor is not None,
         }
     except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+        return {"status": "error", "error": str(e)}
+
 
 @app.post("/api/ocr")
 async def run_ocr(
     file: UploadFile = File(...),
-    det_thresh: float = Form(0.25),
-    min_confidence: float = Form(0.20),
-    model_name: str = Form("vgg_transformer"),
-    upscale_small: bool = Form(True),
+    det_thresh:      float = Form(0.25),
+    min_confidence:  float = Form(0.20),
+    model_name:      str   = Form("vgg_transformer"),
+    upscale_small:   bool  = Form(True),
     adaptive_padding: bool = Form(True),
-    contrast_boost: bool = Form(False),
-    normalize_text: bool = Form(True),
-    use_beamsearch: bool = Form(False),
+    contrast_boost:  bool  = Form(False),
+    normalize_text:  bool  = Form(True),
+    use_beamsearch:  bool  = Form(False),
 ):
     eng = get_or_init_engine()
     try:
@@ -211,17 +233,18 @@ async def run_ocr(
         logger.error(f"Error in /api/ocr: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/api/sample/{sample_id}")
 async def run_sample_ocr(
     sample_id: str,
-    det_thresh: float = 0.25,
-    min_confidence: float = 0.20,
-    model_name: str = "vgg_transformer",
-    upscale_small: bool = True,
-    adaptive_padding: bool = True,
-    contrast_boost: bool = False,
-    normalize_text: bool = True,
-    use_beamsearch: bool = False,
+    det_thresh:       float = 0.25,
+    min_confidence:   float = 0.20,
+    model_name:       str   = "vgg_transformer",
+    upscale_small:    bool  = True,
+    adaptive_padding: bool  = True,
+    contrast_boost:   bool  = False,
+    normalize_text:   bool  = True,
+    use_beamsearch:   bool  = False,
 ):
     eng = get_or_init_engine()
     candidates = [
@@ -250,7 +273,7 @@ async def run_sample_ocr(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ── Mount Gradio at /gradio ───────────────────────────────────────────
+# ── Mount Gradio under /gradio for local Web Studio ───────────────────
 app = gr.mount_gradio_app(app, demo, path="/gradio")
 
 
@@ -258,10 +281,10 @@ app = gr.mount_gradio_app(app, demo, path="/gradio")
 if __name__ == "__main__":
     is_hf_space = bool(os.environ.get("SPACE_ID") or os.environ.get("SYSTEM") == "spaces")
     if is_hf_space:
-        # On Hugging Face Spaces: launch Gradio directly with ssr_mode=False to avoid Node.js SSR timeout warnings
-        demo.launch(show_error=True, ssr_mode=False)
+        # Hugging Face Spaces: let Gradio manage the server lifecycle
+        # ssr_mode=False avoids Node.js SSR timeout warnings on ZeroGPU
+        demo.launch(show_error=True, ssr_mode=False, server_name="0.0.0.0", server_port=7860)
     else:
-        # Locally: run Uvicorn to serve Dark Mode Web Studio, APIs, and Gradio at /gradio
         import uvicorn
         port = int(os.environ.get("PORT", 8000))
         host = os.environ.get("HOST", "127.0.0.1")
