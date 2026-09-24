@@ -19,6 +19,7 @@ except ImportError:
             return func
     spaces = MockSpaces()
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -119,11 +120,24 @@ with gr.Blocks(title="AIC OCR Studio — Vietnamese OCR") as demo:
     )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Only pre-warm engine locally (avoid triggering CUDA outside @spaces.GPU on Hugging Face Spaces)
+    is_hf_space = bool(os.environ.get("SPACE_ID") or os.environ.get("SYSTEM") == "spaces")
+    if not is_hf_space:
+        try:
+            get_or_init_engine()
+        except Exception as e:
+            logger.warning(f"Engine deferred startup initialization: {e}")
+    yield
+
+
 # ── FastAPI Application ───────────────────────────────────────────────
 app = FastAPI(
     title="AIC OCR Studio",
     description="Vietnamese OCR with DBNet (ONNX) and VietOCR Transformer",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -137,16 +151,6 @@ app.add_middleware(
 # Mount static files for Dark Mode Web Studio
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-@app.on_event("startup")
-def startup_event():
-    # Only pre-warm engine locally (avoid triggering CUDA outside @spaces.GPU on Hugging Face Spaces)
-    is_hf_space = bool(os.environ.get("SPACE_ID") or os.environ.get("SYSTEM") == "spaces")
-    if not is_hf_space:
-        try:
-            get_or_init_engine()
-        except Exception as e:
-            logger.warning(f"Engine deferred startup initialization: {e}")
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -254,8 +258,8 @@ app = gr.mount_gradio_app(app, demo, path="/gradio")
 if __name__ == "__main__":
     is_hf_space = bool(os.environ.get("SPACE_ID") or os.environ.get("SYSTEM") == "spaces")
     if is_hf_space:
-        # On Hugging Face Spaces: launch Gradio directly to let HF manage ports, SSR proxy, and ZeroGPU
-        demo.launch(show_error=True)
+        # On Hugging Face Spaces: launch Gradio directly with ssr_mode=False to avoid Node.js SSR timeout warnings
+        demo.launch(show_error=True, ssr_mode=False)
     else:
         # Locally: run Uvicorn to serve Dark Mode Web Studio, APIs, and Gradio at /gradio
         import uvicorn
