@@ -93,11 +93,10 @@ def gradio_predict(img, det_thresh, min_conf, upscale, adapt_pad, contrast, norm
 
 
 # ── Gradio UI ─────────────────────────────────────────────────────────
-with gr.Blocks(title="AIC OCR Studio — Vietnamese OCR") as demo:
-    gr.Markdown("# 🚀 AIC OCR Studio — Trích Xuất Chữ Tiếng Việt & Bounding Box")
+with gr.Blocks(title="OCR Studio — Vietnamese OCR") as demo:
+    gr.Markdown("# OCR Studio — Trích Xuất Chữ Tiếng Việt & Bounding Box")
     gr.Markdown(
-        "Nhận diện ký tự tiếng Việt siêu tốc bảo toàn 100% dấu thanh âm học phức tạp "
-        "bằng mô hình DBNet & VietOCR Transformer."
+        "Nhận diện ký tự tiếng Việt bằng mô hình DBNet & VietOCR Transformer."
     )
 
     with gr.Row():
