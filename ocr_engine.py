@@ -414,42 +414,54 @@ class OCREngine:
         self._load_vietocr(self.vietocr_model_name, use_beamsearch=self.use_beamsearch)
 
     def _load_vietocr(self, model_name: str, use_beamsearch: bool = False):
+        # Ensure pkg_resources is importable — vietocr's Cfg uses it internally.
+        # On some Hugging Face containers setuptools isn't on sys.path by default.
         try:
-            from vietocr.tool.config import Cfg
-            from vietocr.tool.predictor import Predictor
+            import pkg_resources  # noqa: F401
+        except ImportError:
+            import subprocess, sys as _sys
+            logger.warning("pkg_resources not found — installing setuptools...")
+            subprocess.run([_sys.executable, "-m", "pip", "install", "setuptools"], check=False)
 
-            config = Cfg.load_config_from_name(model_name)
-            config["device"] = self.torch_device
-            config["cnn"]["pretrained"] = False
-            config["predictor"]["beamsearch"] = use_beamsearch
+        # Try loading on the primary device first, then fall back to CPU.
+        devices_to_try = [self.torch_device]
+        if self.torch_device != "cpu":
+            devices_to_try.append("cpu")
 
-            self.vietocr_predictor = Predictor(config)
-            self.vietocr_model_name = model_name
-            self.use_beamsearch = use_beamsearch
-            logger.info(f"VietOCR [{model_name}] (beamsearch={use_beamsearch}) loaded on {self.torch_device}.")
-
-            # Warmup PyTorch CUDA buffers on dummy crop
+        last_error = None
+        for device in devices_to_try:
             try:
-                dummy_crop = np.zeros((32, 128, 3), dtype=np.uint8)
-                self._fast_batch_predict([dummy_crop])
-                logger.info("VietOCR CUDA warmup complete.")
-            except Exception as w_err:
-                logger.warning(f"VietOCR warmup skipped: {w_err}")
-        except Exception as e:
-            logger.error(f"Failed to load VietOCR on {self.torch_device}: {e}")
-            if self.torch_device != "cpu":
-                logger.info("Falling back VietOCR to CPU device...")
+                from vietocr.tool.config import Cfg
+                from vietocr.tool.predictor import Predictor
+
+                # Always create a fresh config for each device attempt
+                config = Cfg.load_config_from_name(model_name)
+                config["device"] = device
+                config["cnn"]["pretrained"] = False
+                config["predictor"]["beamsearch"] = use_beamsearch
+
+                self.vietocr_predictor = Predictor(config)
+                self.vietocr_model_name = model_name
+                self.use_beamsearch = use_beamsearch
+                logger.info(f"VietOCR [{model_name}] (beamsearch={use_beamsearch}) loaded on {device}.")
+
+                # Warmup
                 try:
-                    config["device"] = "cpu"
-                    self.vietocr_predictor = Predictor(config)
-                    self.vietocr_model_name = model_name
-                    self.use_beamsearch = use_beamsearch
-                    logger.info("VietOCR successfully initialized on CPU fallback.")
-                except Exception as cpu_err:
-                    logger.error(f"VietOCR CPU fallback also failed: {cpu_err}")
-                    self.vietocr_predictor = None
-            else:
-                self.vietocr_predictor = None
+                    dummy_crop = np.zeros((32, 128, 3), dtype=np.uint8)
+                    self._fast_batch_predict([dummy_crop])
+                    logger.info("VietOCR warmup complete.")
+                except Exception as w_err:
+                    logger.warning(f"VietOCR warmup skipped: {w_err}")
+                return  # success
+
+            except Exception as e:
+                last_error = e
+                logger.error(f"Failed to load VietOCR on {device}: {e}")
+                if device != "cpu":
+                    logger.info("Trying VietOCR on CPU fallback...")
+
+        logger.error(f"VietOCR could not be loaded on any device. Last error: {last_error}")
+        self.vietocr_predictor = None
 
     def switch_model(self, model_name: str, use_beamsearch: bool = False):
         if model_name != self.vietocr_model_name or use_beamsearch != self.use_beamsearch:
