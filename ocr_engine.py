@@ -52,6 +52,93 @@ MODELS_DIR = BASE_DIR / "models" / "det" / "ch_PP-OCRv4_det"
 DEFAULT_ONNX_PATH = MODELS_DIR / "model.onnx"
 
 
+def _patch_pkg_resources() -> None:
+    """
+    Inject a pkg_resources compatibility shim into sys.modules if the real
+    module is unavailable.
+
+    On Hugging Face ZeroGPU, code inside @spaces.GPU decorated functions runs
+    with a restricted sys.path that may exclude the system site-packages even
+    though setuptools is physically installed there.  VietOCR's Cfg class uses
+    pkg_resources.resource_string() to load its YAML config files, so without
+    this shim VietOCR cannot initialise.
+
+    The shim implements only the two functions VietOCR actually uses:
+      - resource_string(package, resource)  -> bytes
+      - resource_filename(package, resource) -> str
+    Both resolve the resource path via importlib.util, which is always available.
+    """
+    try:
+        import pkg_resources  # noqa: F401  – already available, nothing to do
+        return
+    except ImportError:
+        pass
+
+    import sys
+    import types
+    import importlib.util
+
+    def _find_module_dir(module_name: str) -> str:
+        """Return the directory that contains the given dotted module."""
+        spec = importlib.util.find_spec(module_name)
+        if spec and spec.origin:
+            return os.path.dirname(os.path.abspath(spec.origin))
+        # Walk up the dotted hierarchy
+        parts = module_name.split('.')
+        for depth in range(len(parts) - 1, 0, -1):
+            parent = '.'.join(parts[:depth])
+            pspec = importlib.util.find_spec(parent)
+            if pspec and pspec.submodule_search_locations:
+                return list(pspec.submodule_search_locations)[0]
+        return os.getcwd()
+
+    def resource_string(package_or_requirement, resource_name: str) -> bytes:
+        pkg = (
+            package_or_requirement
+            if isinstance(package_or_requirement, str)
+            else str(package_or_requirement)
+        )
+        base_dir = _find_module_dir(pkg)
+        # Primary candidate: resource relative to the module's own directory
+        candidates = [os.path.join(base_dir, resource_name)]
+        # Secondary: resource relative to the top-level package root
+        #   e.g. 'vietocr.tool.config' → look in <vietocr_root>/config/...
+        root_pkg = pkg.split('.')[0]
+        if root_pkg != pkg:
+            root_spec = importlib.util.find_spec(root_pkg)
+            if root_spec and root_spec.origin:
+                root_dir = os.path.dirname(os.path.abspath(root_spec.origin))
+                candidates.append(os.path.join(root_dir, resource_name))
+        for path in candidates:
+            if os.path.exists(path):
+                with open(path, 'rb') as fh:
+                    return fh.read()
+        raise FileNotFoundError(
+            f"pkg_resources shim: resource '{resource_name}' not found for '{pkg}'.\n"
+            f"Searched: {candidates}"
+        )
+
+    def resource_filename(package_or_requirement, resource_name: str) -> str:
+        pkg = (
+            package_or_requirement
+            if isinstance(package_or_requirement, str)
+            else str(package_or_requirement)
+        )
+        return os.path.join(_find_module_dir(pkg), resource_name)
+
+    shim = types.ModuleType('pkg_resources')
+    shim.resource_string = resource_string
+    shim.resource_filename = resource_filename
+    shim.require = lambda *args: []
+    sys.modules['pkg_resources'] = shim
+    logger.warning(
+        "pkg_resources not importable — compatibility shim installed via importlib."
+    )
+
+
+# Install shim at module load time so it is ready before any vietocr imports.
+_patch_pkg_resources()
+
 def order_quad_points(points: np.ndarray) -> np.ndarray:
     """Sắp xếp 4 điểm đa giác theo thứ tự: Top-Left, Top-Right, Bottom-Right, Bottom-Left."""
     pts = np.asarray(points, dtype=np.float32).reshape(4, 2)
@@ -414,16 +501,9 @@ class OCREngine:
         self._load_vietocr(self.vietocr_model_name, use_beamsearch=self.use_beamsearch)
 
     def _load_vietocr(self, model_name: str, use_beamsearch: bool = False):
-        # Ensure pkg_resources is importable — vietocr's Cfg uses it internally.
-        # On some Hugging Face containers setuptools isn't on sys.path by default.
-        try:
-            import pkg_resources  # noqa: F401
-        except ImportError:
-            import subprocess, sys as _sys
-            logger.warning("pkg_resources not found — installing setuptools...")
-            subprocess.run([_sys.executable, "-m", "pip", "install", "setuptools"], check=False)
-
         # Try loading on the primary device first, then fall back to CPU.
+        # Note: _patch_pkg_resources() was already called at module load time,
+        # so pkg_resources (or its shim) is available before any vietocr import.
         devices_to_try = [self.torch_device]
         if self.torch_device != "cpu":
             devices_to_try.append("cpu")
