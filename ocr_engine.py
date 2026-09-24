@@ -430,8 +430,20 @@ class OCREngine:
             except Exception as w_err:
                 logger.warning(f"VietOCR warmup skipped: {w_err}")
         except Exception as e:
-            logger.error(f"Failed to load VietOCR: {e}")
-            self.vietocr_predictor = None
+            logger.error(f"Failed to load VietOCR on {self.torch_device}: {e}")
+            if self.torch_device != "cpu":
+                logger.info("Falling back VietOCR to CPU device...")
+                try:
+                    config["device"] = "cpu"
+                    self.vietocr_predictor = Predictor(config)
+                    self.vietocr_model_name = model_name
+                    self.use_beamsearch = use_beamsearch
+                    logger.info("VietOCR successfully initialized on CPU fallback.")
+                except Exception as cpu_err:
+                    logger.error(f"VietOCR CPU fallback also failed: {cpu_err}")
+                    self.vietocr_predictor = None
+            else:
+                self.vietocr_predictor = None
 
     def switch_model(self, model_name: str, use_beamsearch: bool = False):
         if model_name != self.vietocr_model_name or use_beamsearch != self.use_beamsearch:
@@ -491,7 +503,13 @@ class OCREngine:
         normalize_text: bool = True,
     ) -> List[Tuple[str, float]]:
         """Nhận diện chữ từng ảnh crop bằng VietOCR theo batch GPU với tiền xử lý và chuẩn hóa tiếng Việt."""
-        if not crops_bgr or self.vietocr_predictor is None:
+        if not crops_bgr:
+            return []
+        if self.vietocr_predictor is None:
+            logger.info("VietOCR predictor is None. Attempting reload...")
+            self._load_vietocr(self.vietocr_model_name, use_beamsearch=self.use_beamsearch)
+        if self.vietocr_predictor is None:
+            logger.error("VietOCR predictor remains unavailable. Returning empty recognition.")
             return []
 
         # 1. Tiền xử lý tương phản & kích thước
